@@ -78,6 +78,49 @@
             display: none;
         }
         
+        .export-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .export-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 4px 0;
+            margin-top: 2px;
+            min-width: 160px;
+            z-index: 1000;
+            display: none;
+            backdrop-filter: blur(20px);
+        }
+        
+        .export-menu.show {
+            display: block;
+        }
+        
+        .export-menu button {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: rgba(0, 255, 255, 0.8);
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            font-size: 13px;
+            text-align: left;
+            transition: all 0.15s ease;
+        }
+        
+        .export-menu button:hover {
+            background: rgba(0, 255, 255, 0.1);
+            color: #00ffff;
+        }
+        
 
         
         .tooltip {
@@ -395,14 +438,17 @@
             <div class="tooltip">Load a graph from JSON file</div>
         </button>
         <input type="file" id="fileInput" accept=".json">
-        <button id="exportBtn">
-            Download SVG
-            <div class="tooltip">Export graph as SVG image</div>
-        </button>
-        <button id="exportPngBtn">
-            Download PNG
-            <div class="tooltip">Export graph as 4K PNG image</div>
-        </button>
+        <div class="export-dropdown">
+            <button id="exportDropdownBtn">
+                Download ▼
+                <div class="tooltip">Export graph in various formats</div>
+            </button>
+            <div class="export-menu" id="exportMenu">
+                <button id="exportSvgBtn">SVG (Vector)</button>
+                <button id="exportPngBtn">PNG (Transparent)</button>
+                <button id="exportPngBgBtn">PNG (With Background)</button>
+            </div>
+        </div>
         <button id="clearBtn" class="danger">
             Clear
             <div class="tooltip">Delete all nodes and connections</div>
@@ -472,12 +518,8 @@
                 <span class="help-key">Drag JSON file</span>
             </div>
             <div class="help-shortcut">
-                <span>Export SVG</span>
-                <span class="help-key">SVG button</span>
-            </div>
-            <div class="help-shortcut">
-                <span>Export 4K PNG</span>
-                <span class="help-key">PNG button</span>
+                <span>Export options</span>
+                <span class="help-key">Download dropdown</span>
             </div>
             <div class="help-shortcut">
                 <span>Pan graph</span>
@@ -528,8 +570,11 @@
                 const toggleBordersBtn = document.getElementById('toggleBordersBtn');
                 const saveBtn = document.getElementById('saveBtn');
                 const loadBtn = document.getElementById('loadBtn');
-                const exportBtn = document.getElementById('exportBtn');
+                const exportDropdownBtn = document.getElementById('exportDropdownBtn');
+                const exportMenu = document.getElementById('exportMenu');
+                const exportSvgBtn = document.getElementById('exportSvgBtn');
                 const exportPngBtn = document.getElementById('exportPngBtn');
+                const exportPngBgBtn = document.getElementById('exportPngBgBtn');
                 const fileInput = document.getElementById('fileInput');
                 const clearBtn = document.getElementById('clearBtn');
                 
@@ -539,9 +584,33 @@
                 saveBtn.addEventListener('click', () => this.saveGraph());
                 loadBtn.addEventListener('click', () => fileInput.click());
                 fileInput.addEventListener('change', (e) => this.loadGraphFromFile(e));
-                exportBtn.addEventListener('click', () => this.exportSvg());
-                exportPngBtn.addEventListener('click', () => this.exportPng());
                 clearBtn.addEventListener('click', () => this.clearGraph());
+                
+                // Export dropdown events
+                exportDropdownBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    exportMenu.classList.toggle('show');
+                });
+                
+                exportSvgBtn.addEventListener('click', () => {
+                    exportMenu.classList.remove('show');
+                    this.exportSvg();
+                });
+                
+                exportPngBtn.addEventListener('click', () => {
+                    exportMenu.classList.remove('show');
+                    this.exportPng();
+                });
+                
+                exportPngBgBtn.addEventListener('click', () => {
+                    exportMenu.classList.remove('show');
+                    this.exportPngWithBackground();
+                });
+                
+                // Close dropdown when clicking outside
+                document.addEventListener('click', () => {
+                    exportMenu.classList.remove('show');
+                });
             
                 // Container events
                 container.addEventListener('dblclick', (e) => this.handleContainerDoubleClick(e));
@@ -1228,11 +1297,13 @@
                 const transformWithScale = currentTransform.replace(/scale\([^)]+\)/, `scale(${newScale})`);
                 viewport.style.transform = transformWithScale;
                 
-                // Export the container as PNG in 4K resolution
+                // Export the container as PNG in 4K resolution with enhanced colors
                 domtoimage.toPng(container, {
                     bgcolor: 'transparent',
                     style: {
-                        background: 'transparent'
+                        background: 'transparent',
+                        // Boost color saturation to match editor appearance
+                        filter: 'saturate(1.2) brightness(1.1)'
                     },
                     pixelRatio: 1, // Use 1 since we're scaling the content instead
                     width: container.offsetWidth * scaleFactor,
@@ -1255,6 +1326,70 @@
                 .catch(error => {
                     console.error('Error exporting PNG:', error);
                     alert('Error exporting PNG. Please try again.');
+                    
+                    // Restore original transform even on error
+                    viewport.style.transform = originalTransform;
+                    
+                    // Restore toolbar and help panel even on error
+                    toolbar.style.display = originalToolbarDisplay;
+                    helpPanel.style.display = originalHelpDisplay;
+                });
+            }
+            
+            exportPngWithBackground() {
+                const container = document.getElementById('container');
+                const viewport = document.getElementById('graphViewport');
+                
+                // Temporarily hide the toolbar and help panel
+                const toolbar = document.querySelector('.toolbar');
+                const helpPanel = document.querySelector('.help-panel');
+                const originalToolbarDisplay = toolbar.style.display;
+                const originalHelpDisplay = helpPanel.style.display;
+                
+                toolbar.style.display = 'none';
+                helpPanel.style.display = 'none';
+                
+                // Store original viewport transform
+                const originalTransform = viewport.style.transform;
+                
+                // Scale up the viewport for 4K rendering
+                const scaleFactor = 4;
+                const currentTransform = viewport.style.transform;
+                const scaleMatch = currentTransform.match(/scale\(([^)]+)\)/);
+                const currentScale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+                const newScale = currentScale * scaleFactor;
+                
+                // Apply scaled transform
+                const transformWithScale = currentTransform.replace(/scale\([^)]+\)/, `scale(${newScale})`);
+                viewport.style.transform = transformWithScale;
+                
+                // Export the container as PNG in 4K resolution with black background
+                domtoimage.toPng(container, {
+                    bgcolor: '#000000', // Black background like the editor
+                    style: {
+                        background: '#000000'
+                    },
+                    pixelRatio: 1,
+                    width: container.offsetWidth * scaleFactor,
+                    height: container.offsetHeight * scaleFactor
+                })
+                .then(pngDataUrl => {
+                    // Create download link
+                    const link = document.createElement('a');
+                    link.href = pngDataUrl;
+                    link.download = 'graph-with-background.png';
+                    link.click();
+                    
+                    // Restore original transform
+                    viewport.style.transform = originalTransform;
+                    
+                    // Restore toolbar and help panel
+                    toolbar.style.display = originalToolbarDisplay;
+                    helpPanel.style.display = originalHelpDisplay;
+                })
+                .catch(error => {
+                    console.error('Error exporting PNG with background:', error);
+                    alert('Error exporting PNG with background. Please try again.');
                     
                     // Restore original transform even on error
                     viewport.style.transform = originalTransform;
