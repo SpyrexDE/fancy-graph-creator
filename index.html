@@ -399,6 +399,10 @@
             Download SVG
             <div class="tooltip">Export graph as SVG image</div>
         </button>
+        <button id="exportPngBtn">
+            Download PNG
+            <div class="tooltip">Export graph as 4K PNG image</div>
+        </button>
         <button id="clearBtn" class="danger">
             Clear
             <div class="tooltip">Delete all nodes and connections</div>
@@ -409,7 +413,7 @@
     
         <div class="container" id="container">
         <div class="graph-viewport" id="graphViewport">
-            <div class="connections" id="connections"></div>
+        <div class="connections" id="connections"></div>
             <div class="nodes" id="nodes"></div>
         </div>
         <div class="drop-overlay" id="dropOverlay">
@@ -469,7 +473,11 @@
             </div>
             <div class="help-shortcut">
                 <span>Export SVG</span>
-                <span class="help-key">Export button</span>
+                <span class="help-key">SVG button</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Export 4K PNG</span>
+                <span class="help-key">PNG button</span>
             </div>
             <div class="help-shortcut">
                 <span>Pan graph</span>
@@ -521,6 +529,7 @@
                 const saveBtn = document.getElementById('saveBtn');
                 const loadBtn = document.getElementById('loadBtn');
                 const exportBtn = document.getElementById('exportBtn');
+                const exportPngBtn = document.getElementById('exportPngBtn');
                 const fileInput = document.getElementById('fileInput');
                 const clearBtn = document.getElementById('clearBtn');
                 
@@ -531,6 +540,7 @@
                 loadBtn.addEventListener('click', () => fileInput.click());
                 fileInput.addEventListener('change', (e) => this.loadGraphFromFile(e));
                 exportBtn.addEventListener('click', () => this.exportSvg());
+                exportPngBtn.addEventListener('click', () => this.exportPng());
                 clearBtn.addEventListener('click', () => this.clearGraph());
             
                 // Container events
@@ -1184,6 +1194,70 @@
                 .catch(error => {
                     console.error('Error exporting SVG:', error);
                     alert('Error exporting SVG. Please try again.');
+                    
+                    // Restore toolbar and help panel even on error
+                    toolbar.style.display = originalToolbarDisplay;
+                    helpPanel.style.display = originalHelpDisplay;
+                });
+            }
+            
+            exportPng() {
+                const container = document.getElementById('container');
+                const viewport = document.getElementById('graphViewport');
+                
+                // Temporarily hide the toolbar and help panel
+                const toolbar = document.querySelector('.toolbar');
+                const helpPanel = document.querySelector('.help-panel');
+                const originalToolbarDisplay = toolbar.style.display;
+                const originalHelpDisplay = helpPanel.style.display;
+                
+                toolbar.style.display = 'none';
+                helpPanel.style.display = 'none';
+                
+                // Store original viewport transform
+                const originalTransform = viewport.style.transform;
+                
+                // Scale up the viewport for 4K rendering
+                const scaleFactor = 4;
+                const currentTransform = viewport.style.transform;
+                const scaleMatch = currentTransform.match(/scale\(([^)]+)\)/);
+                const currentScale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+                const newScale = currentScale * scaleFactor;
+                
+                // Apply scaled transform
+                const transformWithScale = currentTransform.replace(/scale\([^)]+\)/, `scale(${newScale})`);
+                viewport.style.transform = transformWithScale;
+                
+                // Export the container as PNG in 4K resolution
+                domtoimage.toPng(container, {
+                    bgcolor: 'transparent',
+                    style: {
+                        background: 'transparent'
+                    },
+                    pixelRatio: 1, // Use 1 since we're scaling the content instead
+                    width: container.offsetWidth * scaleFactor,
+                    height: container.offsetHeight * scaleFactor
+                })
+                .then(pngDataUrl => {
+                    // Create download link
+                    const link = document.createElement('a');
+                    link.href = pngDataUrl;
+                    link.download = 'graph.png';
+                    link.click();
+                    
+                    // Restore original transform
+                    viewport.style.transform = originalTransform;
+                    
+                    // Restore toolbar and help panel
+                    toolbar.style.display = originalToolbarDisplay;
+                    helpPanel.style.display = originalHelpDisplay;
+                })
+                .catch(error => {
+                    console.error('Error exporting PNG:', error);
+                    alert('Error exporting PNG. Please try again.');
+                    
+                    // Restore original transform even on error
+                    viewport.style.transform = originalTransform;
                     
                     // Restore toolbar and help panel even on error
                     toolbar.style.display = originalToolbarDisplay;
