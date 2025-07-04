@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Graph Editor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000000;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .toolbar {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            display: flex;
+            gap: 1px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 4px;
+            border-radius: 8px;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+        }
+        
+        .toolbar button {
+            background: transparent;
+            border: none;
+            color: rgba(0, 255, 255, 0.8);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            font-size: 13px;
+            transition: all 0.15s ease;
+            position: relative;
+            white-space: nowrap;
+        }
+        
+        .toolbar button:hover {
+            background: rgba(0, 255, 255, 0.1);
+            color: #00ffff;
+            transform: translateY(-1px);
+        }
+        
+        .toolbar button.active {
+            background: rgba(0, 255, 255, 0.2);
+            color: #00ffff;
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+        }
+        
+        .toolbar button.danger {
+            color: rgba(255, 100, 100, 0.8);
+        }
+        
+        .toolbar button.danger:hover {
+            background: rgba(255, 100, 100, 0.1);
+            color: #ff6464;
+        }
+        
+        .toolbar input[type="file"] {
+            display: none;
+        }
+        
+
+        
+        .tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #00ffff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            margin-bottom: 5px;
+        }
+        
+        .toolbar button:hover .tooltip {
+            opacity: 1;
+        }
+        
+        .container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+        
+        .container.connecting {
+            cursor: crosshair;
+        }
+        
+        .container.dragging {
+            cursor: grabbing;
+        }
+        
+        .container.drag-over {
+            background: rgba(0, 255, 255, 0.1);
+            border: 2px dashed rgba(0, 255, 255, 0.5);
+        }
+        
+        .drop-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #00ffff;
+            padding: 20px 40px;
+            border-radius: 12px;
+            border: 2px dashed rgba(0, 255, 255, 0.8);
+            font-size: 16px;
+            font-weight: 600;
+            text-align: center;
+            pointer-events: none;
+            z-index: 200;
+            display: none;
+        }
+        
+        .drop-overlay.show {
+            display: block;
+        }
+        
+        .connections {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        .line {
+            position: absolute;
+            height: 12px;
+            cursor: default;
+            transition: all 0.2s;
+            transform-origin: left center;
+            display: flex;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 5;
+        }
+        
+        .container.connecting .line {
+            cursor: pointer;
+        }
+        
+        .line-visual {
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, rgba(0,255,255,0.8) 50%, transparent 100%);
+            border-radius: 1px;
+            box-shadow: 0 0 4px rgba(0,255,255,0.3);
+            transition: all 0.2s;
+        }
+        
+        .container.connecting .line:hover .line-visual {
+            background: linear-gradient(90deg, transparent 0%, rgba(255,0,0,0.9) 50%, transparent 100%);
+            box-shadow: 0 0 12px rgba(255,0,0,0.7);
+        }
+        
+        .nodes {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 50;
+            pointer-events: none;
+        }
+        
+        .node {
+            position: absolute;
+            color: #00ffff;
+            font-weight: 500;
+            font-size: 16px;
+            text-align: center;
+            z-index: 100;
+            background: radial-gradient(circle at center, rgba(0,255,255,0.15) 0%, rgba(0,255,255,0.08) 60%, transparent 100%);
+            border-radius: 50px;
+            padding: 10px 18px;
+            box-shadow: 0 0 20px rgba(0,255,255,0.3);
+            backdrop-filter: blur(2px);
+            white-space: nowrap;
+            transform: translate(-50%, -50%);
+            cursor: grab;
+            border: 2px solid rgba(0,255,255,0.3);
+            transition: box-shadow 0.2s, border-color 0.2s;
+            user-select: none;
+            min-width: 80px;
+            pointer-events: auto;
+        }
+        
+        .node.no-borders {
+            border: 2px solid transparent;
+        }
+        
+        .node:hover {
+            box-shadow: 0 0 30px rgba(0,255,255,0.5);
+            border-color: rgba(0,255,255,0.6);
+        }
+        
+        .node.dragging {
+            cursor: grabbing;
+            box-shadow: 0 0 40px rgba(0,255,255,0.7);
+            z-index: 4;
+        }
+        
+        .node.selected {
+            border-color: rgba(255,255,0,0.8);
+            box-shadow: 0 0 25px rgba(255,255,0,0.5);
+        }
+        
+        .node.connecting {
+            border-color: rgba(0,255,0,0.8);
+            box-shadow: 0 0 25px rgba(0,255,0,0.5);
+        }
+        
+        .node.large {
+            font-size: 20px;
+            font-weight: 600;
+            padding: 12px 20px;
+            box-shadow: 0 0 30px rgba(0,255,255,0.4);
+            background: radial-gradient(circle at center, rgba(0,255,255,0.25) 0%, rgba(0,255,255,0.12) 60%, transparent 100%);
+        }
+        
+        .node.medium {
+            font-size: 18px;
+            font-weight: 500;
+            padding: 10px 18px;
+            box-shadow: 0 0 25px rgba(0,255,255,0.35);
+            background: radial-gradient(circle at center, rgba(0,255,255,0.2) 0%, rgba(0,255,255,0.1) 60%, transparent 100%);
+        }
+        
+        .node input {
+            background: transparent;
+            border: none;
+            color: #00ffff;
+            font-family: 'Inter', sans-serif;
+            font-size: inherit;
+            font-weight: inherit;
+            text-align: center;
+            outline: none;
+            width: 100%;
+            min-width: 60px;
+        }
+        
+        .node input::placeholder {
+            color: rgba(0,255,255,0.5);
+        }
+        
+        .temp-line {
+            position: absolute;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, rgba(0,255,0,0.8) 50%, transparent 100%);
+            transform-origin: left center;
+            border-radius: 1px;
+            box-shadow: 0 0 4px rgba(0,255,0,0.3);
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        .help-panel {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(0,255,255,0.8);
+            font-size: 11px;
+            background: rgba(0,0,0,0.8);
+            padding: 12px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0,255,255,0.3);
+            max-width: 250px;
+            opacity: 0.7;
+            transition: all 0.3s ease;
+        }
+        
+        .help-panel:hover {
+            opacity: 1;
+        }
+        
+        .help-panel.collapsed {
+            max-width: 120px;
+        }
+        
+        .help-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            margin: 0 0 8px 0;
+            color: #00ffff;
+            font-size: 12px;
+            font-weight: 600;
+            user-select: none;
+        }
+        
+        .help-toggle {
+            color: rgba(0,255,255,0.6);
+            font-size: 10px;
+            transition: transform 0.3s ease;
+        }
+        
+        .help-panel.collapsed .help-toggle {
+            transform: rotate(-90deg);
+        }
+        
+        .help-shortcuts {
+            display: grid;
+            gap: 3px;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        .help-panel.collapsed .help-shortcuts {
+            max-height: 0;
+            opacity: 0;
+            margin: 0;
+        }
+        
+        .help-shortcut {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .help-key {
+            background: rgba(0,255,255,0.2);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: 500;
+        }
+        
+
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button id="connectModeBtn">
+            Connect
+            <div class="tooltip">Click two nodes to connect them (C)</div>
+        </button>
+        <button id="toggleBordersBtn">
+            Borders
+            <div class="tooltip">Show/hide node borders (B)</div>
+        </button>
+        <button id="saveBtn">
+            Save
+            <div class="tooltip">Save your graph as JSON</div>
+        </button>
+        <button id="loadBtn">
+            Load
+            <div class="tooltip">Load a graph from JSON file</div>
+        </button>
+        <input type="file" id="fileInput" accept=".json">
+        <button id="exportBtn">
+            Download SVG
+            <div class="tooltip">Export graph as SVG image</div>
+        </button>
+        <button id="clearBtn" class="danger">
+            Clear
+            <div class="tooltip">Delete all nodes and connections</div>
+        </button>
+    </div>
+    
+
+    
+        <div class="container" id="container">
+        <div class="connections" id="connections"></div>
+        <div class="nodes" id="nodes"></div>
+        <div class="drop-overlay" id="dropOverlay">
+            Drop JSON file to load graph
+        </div>
+    </div>
+    
+    <div class="help-panel collapsed" id="helpPanel">
+        <div class="help-header" id="helpHeader">
+            <span>Quick Guide</span>
+            <span class="help-toggle">▼</span>
+        </div>
+        <div class="help-shortcuts">
+            <div class="help-shortcut">
+                <span>Add node</span>
+                <span class="help-key">Double-click empty space</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Edit text</span>
+                <span class="help-key">Double-click node</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Move node</span>
+                <span class="help-key">Drag</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Delete node</span>
+                <span class="help-key">Right-click</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Delete connection</span>
+                <span class="help-key">Click line (connect mode)</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Connect mode</span>
+                <span class="help-key">C</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Toggle borders</span>
+                <span class="help-key">B</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Exit mode</span>
+                <span class="help-key">Esc</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Save graph</span>
+                <span class="help-key">Save button</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Load graph</span>
+                <span class="help-key">Drag JSON file</span>
+            </div>
+            <div class="help-shortcut">
+                <span>Export SVG</span>
+                <span class="help-key">Export button</span>
+            </div>
+        </div>
+    </div>
+    
+
+
+    <script>
+        class GraphEditor {
+            constructor() {
+                this.nodes = [];
+                this.connections = [];
+                this.nextNodeId = 1;
+                this.selectedNode = null;
+                this.connectMode = false;
+                this.connectingFrom = null;
+                this.dragging = false;
+                this.dragOffset = { x: 0, y: 0 };
+                this.tempLine = null;
+                this.showBorders = true;
+                
+                this.initializeEventListeners();
+                this.loadDefaultGraph();
+            }
+            
+            initializeEventListeners() {
+                const container = document.getElementById('container');
+                const connectModeBtn = document.getElementById('connectModeBtn');
+                const toggleBordersBtn = document.getElementById('toggleBordersBtn');
+                const saveBtn = document.getElementById('saveBtn');
+                const loadBtn = document.getElementById('loadBtn');
+                const exportBtn = document.getElementById('exportBtn');
+                const fileInput = document.getElementById('fileInput');
+                const clearBtn = document.getElementById('clearBtn');
+                
+                // Toolbar events
+                connectModeBtn.addEventListener('click', () => this.toggleConnectMode());
+                toggleBordersBtn.addEventListener('click', () => this.toggleBorders());
+                saveBtn.addEventListener('click', () => this.saveGraph());
+                loadBtn.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', (e) => this.loadGraphFromFile(e));
+                exportBtn.addEventListener('click', () => this.exportSvg());
+                clearBtn.addEventListener('click', () => this.clearGraph());
+            
+                // Container events
+                container.addEventListener('dblclick', (e) => this.handleContainerDoubleClick(e));
+                container.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+                container.addEventListener('mouseup', () => this.handleMouseUp());
+            
+                // Prevent context menu on right click
+                container.addEventListener('contextmenu', (e) => e.preventDefault());
+                
+                // Keyboard shortcuts
+                document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+                
+                // Drag and drop for file loading
+                this.initializeDragAndDrop();
+                
+                // Help panel toggle
+                this.initializeHelpPanel();
+            }
+            
+            handleKeyDown(e) {
+                // Ignore if user is typing in an input field
+                if (e.target.tagName === 'INPUT') return;
+                
+                switch(e.key.toLowerCase()) {
+                    case 'c':
+                        e.preventDefault();
+                        this.toggleConnectMode();
+                        break;
+                    case 'b':
+                        e.preventDefault();
+                        this.toggleBorders();
+                        break;
+                    case 'escape':
+                        if (this.connectMode) {
+                            e.preventDefault();
+                            this.toggleConnectMode();
+                        }
+                        break;
+                }
+            }
+            
+            initializeDragAndDrop() {
+                const container = document.getElementById('container');
+                const dropOverlay = document.getElementById('dropOverlay');
+                
+                container.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    container.classList.add('drag-over');
+                    dropOverlay.classList.add('show');
+                });
+                
+                container.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+                
+                container.addEventListener('dragleave', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Only remove if we're leaving the container itself
+                    if (!container.contains(e.relatedTarget)) {
+                        container.classList.remove('drag-over');
+                        dropOverlay.classList.remove('show');
+                    }
+                });
+                
+                container.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    container.classList.remove('drag-over');
+                    dropOverlay.classList.remove('show');
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length > 0) {
+                        this.handleDroppedFile(files[0]);
+                    }
+                });
+            }
+            
+            handleDroppedFile(file) {
+                if (!file.name.toLowerCase().endsWith('.json')) {
+                    alert('Please drop a JSON file');
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const graphData = JSON.parse(e.target.result);
+                        this.loadGraph(graphData);
+                    } catch (error) {
+                        alert('Error loading file: Invalid JSON format');
+                    }
+                };
+                reader.readAsText(file);
+            }
+            
+            initializeHelpPanel() {
+                const helpHeader = document.getElementById('helpHeader');
+                const helpPanel = document.getElementById('helpPanel');
+                
+                helpHeader.addEventListener('click', () => {
+                    helpPanel.classList.toggle('collapsed');
+                });
+            }
+            
+            addNode(x = null, y = null, text = 'New Node', size = 'normal') {
+                const nodeId = this.nextNodeId++;
+                const node = {
+                    id: nodeId,
+                    text: text,
+                    x: x || Math.random() * (window.innerWidth - 200) + 100,
+                    y: y || Math.random() * (window.innerHeight - 200) + 100,
+                    size: size
+                };
+                
+                this.nodes.push(node);
+                this.renderNode(node);
+                
+                return node;
+            }
+            
+            renderNode(node) {
+                const nodeElement = document.createElement('div');
+                nodeElement.className = `node ${node.size}`;
+                if (!this.showBorders) {
+                    nodeElement.classList.add('no-borders');
+                }
+                nodeElement.dataset.nodeId = node.id;
+                nodeElement.style.left = node.x + 'px';
+                nodeElement.style.top = node.y + 'px';
+                nodeElement.innerHTML = `<span>${node.text}</span>`;
+                
+                // Mouse events
+                nodeElement.addEventListener('mousedown', (e) => this.handleNodeMouseDown(e, node));
+                nodeElement.addEventListener('dblclick', (e) => this.handleNodeDoubleClick(e, node));
+                nodeElement.addEventListener('click', (e) => this.handleNodeClick(e, node));
+                nodeElement.addEventListener('contextmenu', (e) => this.handleNodeRightClick(e, node));
+                
+                document.getElementById('nodes').appendChild(nodeElement);
+            }
+            
+            handleNodeMouseDown(e, node) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                if (this.connectMode) return;
+                
+                this.selectedNode = node;
+                this.dragging = true;
+                
+                const rect = e.target.getBoundingClientRect();
+                this.dragOffset = {
+                    x: e.clientX - rect.left - rect.width / 2,
+                    y: e.clientY - rect.top - rect.height / 2
+                };
+                
+                const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
+                nodeElement.classList.add('dragging');
+                document.getElementById('container').classList.add('dragging');
+            }
+            
+            handleNodeDoubleClick(e, node) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
+                const span = nodeElement.querySelector('span');
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = node.text;
+                input.style.width = Math.max(60, span.offsetWidth + 20) + 'px';
+                
+                span.style.display = 'none';
+                nodeElement.appendChild(input);
+                input.focus();
+                input.select();
+                
+                const finishEditing = () => {
+                    const newText = input.value.trim() || 'Node';
+                    node.text = newText;
+                    span.textContent = newText;
+                    span.style.display = 'inline';
+                    input.remove();
+                };
+                
+                input.addEventListener('blur', finishEditing);
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        finishEditing();
+                    }
+                });
+            }
+            
+            handleNodeClick(e, node) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                if (!this.connectMode) return;
+                
+                if (!this.connectingFrom) {
+                    this.connectingFrom = node;
+                    const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
+                    nodeElement.classList.add('connecting');
+                } else if (this.connectingFrom.id !== node.id) {
+                    this.addConnection(this.connectingFrom.id, node.id);
+                    this.clearConnectingState();
+                } else {
+                    this.clearConnectingState();
+                }
+            }
+            
+            handleNodeRightClick(e, node) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                
+                if (confirm('Delete this node?')) {
+                    this.deleteNode(node.id);
+                }
+            }
+            
+            handleContainerDoubleClick(e) {
+                // Only add node if double-clicking on empty space (not on nodes or lines)
+                if (e.target.id === 'container' || e.target.id === 'connections' || e.target.classList.contains('line-visual')) {
+                    this.addNode(e.clientX, e.clientY);
+                }
+            }
+            
+            handleMouseMove(e) {
+                if (this.dragging && this.selectedNode) {
+                    const node = this.selectedNode;
+                    node.x = e.clientX - this.dragOffset.x;
+                    node.y = e.clientY - this.dragOffset.y;
+                    
+                    const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`);
+                    nodeElement.style.left = node.x + 'px';
+                    nodeElement.style.top = node.y + 'px';
+                    
+                    this.renderConnections();
+                }
+                
+                if (this.connectMode && this.connectingFrom) {
+                    this.updateTempLine(e.clientX, e.clientY);
+                }
+            }
+            
+            handleMouseUp() {
+                if (this.dragging) {
+                    this.dragging = false;
+                    this.selectedNode = null;
+                    
+                    document.querySelectorAll('.node.dragging').forEach(node => {
+                        node.classList.remove('dragging');
+                    });
+                    document.getElementById('container').classList.remove('dragging');
+                }
+            }
+            
+            addConnection(fromId, toId) {
+                const existingConnection = this.connections.find(conn => 
+                    (conn.from === fromId && conn.to === toId) ||
+                    (conn.from === toId && conn.to === fromId)
+                );
+                
+                if (!existingConnection) {
+                    this.connections.push({ from: fromId, to: toId });
+                    this.renderConnections();
+                }
+            }
+            
+            deleteConnection(fromId, toId) {
+                this.connections = this.connections.filter(conn => 
+                    !((conn.from === fromId && conn.to === toId) ||
+                      (conn.from === toId && conn.to === fromId))
+                );
+                this.renderConnections();
+            }
+            
+            deleteNode(nodeId) {
+                this.nodes = this.nodes.filter(node => node.id !== nodeId);
+                this.connections = this.connections.filter(conn => 
+                    conn.from !== nodeId && conn.to !== nodeId
+                );
+                
+                const nodeElement = document.querySelector(`[data-node-id="${nodeId}"]`);
+                if (nodeElement) {
+                    nodeElement.remove();
+                }
+                
+                this.renderConnections();
+            }
+            
+            renderConnections() {
+                const connectionsContainer = document.getElementById('connections');
+                connectionsContainer.innerHTML = '';
+                
+                this.connections.forEach(conn => {
+                    const fromNode = this.nodes.find(n => n.id === conn.from);
+                    const toNode = this.nodes.find(n => n.id === conn.to);
+                    
+                    if (fromNode && toNode) {
+                        const line = this.createConnectionLine(fromNode, toNode);
+                        
+                        line.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (this.connectMode) {
+                                this.deleteConnection(conn.from, conn.to);
+                            }
+                        });
+                        
+                        connectionsContainer.appendChild(line);
+                    }
+                });
+            }
+            
+                        createConnectionLine(fromNode, toNode) {
+                const dx = toNode.x - fromNode.x;
+                const dy = toNode.y - fromNode.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                        
+                        const line = document.createElement('div');
+                        line.className = 'line';
+                line.style.left = fromNode.x + 'px';
+                line.style.top = (fromNode.y - 6) + 'px'; // Offset for the taller clickable area
+                        line.style.width = distance + 'px';
+                        line.style.transform = `rotate(${angle}deg)`;
+                line.style.opacity = Math.max(0.3, 0.8 - distance / 1000);
+                        
+                // Create the visual line inside
+                const lineVisual = document.createElement('div');
+                lineVisual.className = 'line-visual';
+                line.appendChild(lineVisual);
+                
+                return line;
+            }
+            
+            updateTempLine(x, y) {
+                if (!this.tempLine) {
+                    this.tempLine = document.createElement('div');
+                    this.tempLine.className = 'temp-line';
+                    document.getElementById('connections').appendChild(this.tempLine);
+                    }
+                
+                const fromNode = this.connectingFrom;
+                const dx = x - fromNode.x;
+                const dy = y - fromNode.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                
+                this.tempLine.style.left = fromNode.x + 'px';
+                this.tempLine.style.top = fromNode.y + 'px';
+                this.tempLine.style.width = distance + 'px';
+                this.tempLine.style.transform = `rotate(${angle}deg)`;
+        }
+        
+            clearConnectingState() {
+                this.connectingFrom = null;
+                document.querySelectorAll('.node.connecting').forEach(node => {
+                    node.classList.remove('connecting');
+                });
+                
+                if (this.tempLine) {
+                    this.tempLine.remove();
+                    this.tempLine = null;
+                }
+            }
+            
+            toggleConnectMode() {
+                this.connectMode = !this.connectMode;
+                const btn = document.getElementById('connectModeBtn');
+                
+                if (this.connectMode) {
+                    btn.classList.add('active');
+                    btn.innerHTML = 'Exit Connect<div class="tooltip">Click to exit connect mode (Esc)</div>';
+                    document.getElementById('container').classList.add('connecting');
+                } else {
+                    btn.classList.remove('active');
+                    btn.innerHTML = 'Connect<div class="tooltip">Click two nodes to connect them (C)</div>';
+                    document.getElementById('container').classList.remove('connecting');
+                    this.clearConnectingState();
+                }
+            }
+            
+            toggleBorders() {
+                this.showBorders = !this.showBorders;
+                const btn = document.getElementById('toggleBordersBtn');
+                
+                if (this.showBorders) {
+                    btn.classList.remove('active');
+                    btn.innerHTML = 'Borders<div class="tooltip">Show/hide node borders</div>';
+                } else {
+                    btn.classList.add('active');
+                    btn.innerHTML = 'No Borders<div class="tooltip">Show/hide node borders</div>';
+                }
+                
+                // Update all existing nodes
+                document.querySelectorAll('.node').forEach(nodeElement => {
+                    if (this.showBorders) {
+                        nodeElement.classList.remove('no-borders');
+                    } else {
+                        nodeElement.classList.add('no-borders');
+                    }
+                });
+            }
+            
+            saveGraph() {
+                const graphData = {
+                    nodes: this.nodes,
+                    connections: this.connections
+                };
+                
+                const dataStr = JSON.stringify(graphData, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'graph.json';
+                link.click();
+                
+                URL.revokeObjectURL(url);
+            }
+            
+            exportSvg() {
+                const container = document.getElementById('container');
+                
+                // Temporarily hide the toolbar and help panel
+                const toolbar = document.querySelector('.toolbar');
+                const helpPanel = document.querySelector('.help-panel');
+                const originalToolbarDisplay = toolbar.style.display;
+                const originalHelpDisplay = helpPanel.style.display;
+                
+                toolbar.style.display = 'none';
+                helpPanel.style.display = 'none';
+                
+                // Export the container as SVG
+                domtoimage.toSvg(container, {
+                    bgcolor: 'transparent',
+                    style: {
+                        background: 'transparent'
+                    }
+                })
+                .then(svgDataUrl => {
+                    // Create download link
+                    const link = document.createElement('a');
+                    link.href = svgDataUrl;
+                    link.download = 'graph.svg';
+                    link.click();
+                    
+                    // Restore toolbar and help panel
+                    toolbar.style.display = originalToolbarDisplay;
+                    helpPanel.style.display = originalHelpDisplay;
+                })
+                .catch(error => {
+                    console.error('Error exporting SVG:', error);
+                    alert('Error exporting SVG. Please try again.');
+                    
+                    // Restore toolbar and help panel even on error
+                    toolbar.style.display = originalToolbarDisplay;
+                    helpPanel.style.display = originalHelpDisplay;
+                });
+            }
+            
+            loadGraphFromFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const graphData = JSON.parse(e.target.result);
+                        this.loadGraph(graphData);
+                    } catch (error) {
+                        alert('Error loading graph: Invalid JSON file');
+                    }
+                };
+                reader.readAsText(file);
+                
+                // Reset the file input
+                event.target.value = '';
+            }
+            
+            loadGraph(graphData) {
+                this.clearGraph();
+                
+                if (graphData.nodes) {
+                    this.nodes = graphData.nodes;
+                    this.nextNodeId = Math.max(...this.nodes.map(n => n.id)) + 1;
+                    
+                    this.nodes.forEach(node => {
+                        this.renderNode(node);
+                    });
+                }
+                
+                if (graphData.connections) {
+                    this.connections = graphData.connections;
+                    this.renderConnections();
+                }
+            }
+            
+            clearGraph() {
+                if (this.nodes.length > 0 && !confirm('Are you sure you want to delete all nodes and connections?')) {
+                    return;
+                }
+                
+                this.nodes = [];
+                this.connections = [];
+                this.nextNodeId = 1;
+                this.selectedNode = null;
+                this.connectingFrom = null;
+                
+                document.getElementById('nodes').innerHTML = '';
+                document.getElementById('connections').innerHTML = '';
+                
+                if (this.connectMode) {
+                    this.toggleConnectMode();
+                }
+            }
+            
+
+            
+
+            
+            loadDefaultGraph() {
+                const defaultNodes = [
+                    { id: 1, text: 'Gamification', x: window.innerWidth * 0.5, y: window.innerHeight * 0.3, size: 'large' },
+                    { id: 2, text: 'Progress Tracking', x: window.innerWidth * 0.25, y: window.innerHeight * 0.2, size: 'medium' },
+                    { id: 3, text: 'Spaced Repetition', x: window.innerWidth * 0.75, y: window.innerHeight * 0.15, size: 'normal' },
+                    { id: 4, text: 'Learning Analytics', x: window.innerWidth * 0.2, y: window.innerHeight * 0.45, size: 'medium' },
+                    { id: 5, text: 'PWA', x: window.innerWidth * 0.8, y: window.innerHeight * 0.4, size: 'normal' },
+                    { id: 6, text: 'Adaptive Learning', x: window.innerWidth * 0.5, y: window.innerHeight * 0.65, size: 'large' },
+                    { id: 7, text: 'Course Editor', x: window.innerWidth * 0.15, y: window.innerHeight * 0.7, size: 'normal' },
+                    { id: 8, text: 'Cross Platform', x: window.innerWidth * 0.85, y: window.innerHeight * 0.7, size: 'medium' }
+                ];
+                
+                const defaultConnections = [
+                    { from: 1, to: 2 }, { from: 1, to: 3 }, { from: 1, to: 6 },
+                    { from: 2, to: 4 }, { from: 2, to: 6 },
+                    { from: 3, to: 5 }, { from: 3, to: 6 },
+                    { from: 4, to: 7 }, { from: 5, to: 8 },
+                    { from: 6, to: 7 }, { from: 6, to: 8 }
+                ];
+                
+                this.loadGraph({ nodes: defaultNodes, connections: defaultConnections });
+            }
+        }
+        
+        // Initialize the graph editor when the page loads
+        window.addEventListener('load', () => {
+            new GraphEditor();
+        });
+    </script>
+</body>
+</html>
